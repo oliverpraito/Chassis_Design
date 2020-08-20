@@ -1,0 +1,623 @@
+
+%%  
+clear all
+
+%Length of 2.8m, Width of 1.5m
+
+%Mechanical properties of Ti alloy
+al_ro = 4430;
+E = 113.8e9;
+G = 44e9;
+yield_strength = 880;   %MPa for Ti alloy
+
+%Chosen values for diameter and thickness of tubes
+D = 0.0465;
+T = 0.005;
+
+ro = D/2;
+ri = (D/2)-T;
+
+%Calculated parameters using equations given
+A = (pi()/4)*((D^2)-(D-2*T)^2);
+Iy = (pi()/64)*((D^4)-(D-2*T)^4);
+Iz = Iy;
+J = (pi()/32)*((D^4)-(D-2*T)^4);
+
+%Inputting force magnitude
+f = 1000;
+
+
+%% Building the shape
+
+%x,y,z coordinates of the numbered nodes
+%x is 2.8, y is 1.5
+%0,0,0 is back right corner
+coords = [0,0,0     %1
+    1.4,0,0
+    2.8,0,0
+    2.8,0.75,0
+    2.8,1.5,0       %5
+    1.4,1.5,0
+    0,1.5,0
+    0,0,0.5
+    0.3,0,0.5
+    1.4,0,0.5       %10
+    2,0,0.5
+    2.8,0,0.5
+    2.8,0.75,0.5
+    2.8,1.5,0.5
+    2,1.5,0.5       %15
+    1.4,1.5,0.5
+    0.3,1.5,0.5
+    0,1.5,0.5
+    2,0,0.6
+    2,1.5,0.6       %20
+    0.3,0,1
+    1.6,0,1
+    1.6,1.5,1
+    0.3,1.5,1
+    2.8,0.75,0.25   %25
+    2.1,0.75,0
+    0.7,0.75,0
+    0.95,0.75,1
+    1.6,0.75,1
+    2.1,0.75,0.5    %30
+    0,0.75,0.25
+    0.3,0.375,0.5
+    0.3,1.125,0.5
+    0.95,0,1
+    0.95,1.5,1];    %35    
+
+%Nodes at either end of each numbered element
+nodes = [1,2        %1
+    2,3
+    3,4
+    4,5
+    5,6             %5
+    6,7
+    7,1
+    8,9
+    9,10
+    10,11           %10
+    11,12
+    12,13
+    13,14
+    14,15
+    15,16           %15
+    16,17
+    17,18
+    1,8
+    2,10
+    3,12            %20
+    5,14
+    6,16
+    7,18
+    8,18            
+    10,19           %25
+    12,19
+    14,20
+    16,20
+    8,21            
+    9,21            %30
+    10,22
+    19,22
+    16,23
+    20,23           
+    17,24           %35
+    18,24           
+    24,21
+    10,16
+    4,25
+    13,25           %40
+    3,25
+    5,25
+    12,25
+    14,25
+    3,10            %45
+    5,16
+    1,10
+    7,16
+    11,19
+    15,20           %50
+    2,26
+    3,26
+    5,26
+    6,26
+    1,27            %55
+    2,27
+    6,27
+    7,27
+    21,28
+    24,28           %60
+    28,29
+    19,20
+    3,11
+    5,15
+    12,26           %65
+    14,26
+    10,30
+    12,30
+    14,30
+    16,30           %70
+    1,31
+    7,31
+    8,31
+    18,31
+    1,9             %75
+    7,17
+    22,29
+    23,29
+    9,32
+    32,33           %80
+    33,17           
+    21,32
+    24,33
+    23,35
+    24,35           %85
+    21,34
+    22,34
+    28,34
+    28,35
+    22,28           %90
+    23,28]';        
+
+%Specify total number of nodes and elements
+NoN = length(coords);
+NoE = length(nodes);
+
+%Create an array specifying which nodes an element is connected to and the
+%corresponding coordinates. Two rows for each element
+%For the first element:
+%[(first node),x,y,z
+%(second node),x,y,z]
+element_nodes = zeros((NoE*2),4);
+element_nodes(:,1) = nodes(:);
+
+%Put corresponding x,y,z coords where the node numbers are
+for i = 1:1:(NoE*2)
+    for j = 1:1:NoN
+        if element_nodes(i,1) == j
+            element_nodes(i,2) = coords(j,1);
+            element_nodes(i,3) = coords(j,2);
+            element_nodes(i,4) = coords(j,3);
+        end
+    end
+end
+
+%Create local and global stiffness matrices in the same loop
+%SpaceFrameElementStiffness, E, G, Iy, Iz, J, x1, y1, z1, x2, y2, z2
+
+%also calculate the lengths of each element and keep in array so that total
+%lengths of tubing can be calculated
+lengths = zeros(NoE,1);
+
+%Calculate midpoints of each element for labelling in the model
+midpoints = zeros(NoE,3);
+
+%k is a 12x12 matrix
+k = zeros(12,12);
+%K requires 6 'points' for each node
+K = zeros(6*NoN,6*NoN);
+for i = 1:1:(NoE)
+    k = SpaceFrameElementStiffness(E,G,A,Iy,Iz,J,(element_nodes((2*i-1),2)),(element_nodes((2*i-1),3)),(element_nodes((2*i-1),4)),(element_nodes((2*i),2)),(element_nodes((2*i),3)),(element_nodes((2*i),4)));
+    K = SpaceFrameAssemble(K,k,(nodes(1,i)),(nodes(2,i)));
+    %Creates an array with the length of each element
+    lengths(i) = sqrt(((element_nodes((2*i),2))-(element_nodes((2*i-1),2)))^2 + ((element_nodes((2*i),3))-(element_nodes((2*i-1),3)))^2 + ((element_nodes((2*i),4))-(element_nodes((2*i-1),4)))^2);
+    
+    %Calculates midpoints of each element
+    midpointx = ((element_nodes((2*i-1),2))+(element_nodes((2*i),2)))/2;
+    midpointy = ((element_nodes((2*i-1),3))+(element_nodes((2*i),3)))/2;
+    midpointz = ((element_nodes((2*i-1),4))+(element_nodes((2*i),4)))/2;
+    midpoints(i,1) = midpointx;
+    midpoints(i,2) = midpointy;
+    midpoints(i,3) = midpointz;
+end
+
+%Sum lengths of each individual tube
+length = sum(lengths);
+
+%% Reducing using boundary conditions
+
+%Save K matrix before reduction as Kbefore
+Kbefore = K;
+
+%Node 4 constrained in z direction
+%Node 1, 7 constrained in x, y, z directions
+%Removes the corresponding rows and columns from the K matrix
+BC = [1,2,3,21,37,38,39];
+K(BC,:) = [];
+K(:,BC) = [];
+
+%% Force Vector
+
+f1 = -f;
+f2 = f;
+
+%f1 at node 3 in z
+%f2 at node 5 in z
+
+F = zeros((6*NoN),1);
+
+%Inputs the force values into correct position
+F(15) = f1;
+F(27) = f2;
+
+%Removes the node constraints from the force matrix
+F(BC) = [];
+
+%% Displacement vector
+%vector is still reduced
+
+u = K\F;
+
+%% Torsional Stiffness
+%zr is vertical displacement of node 5
+%zl is vertical displacement of node 3
+width = 1.5;
+
+zr = u(12);
+zl = u(23);
+
+%Calculates magnitude of angles at two sides of chassis from given
+%equations
+thetal = atand((2*zl)/width);
+thetar = atand((2*zr)/width);
+
+%Calculates torsional stiffness from given equation
+torsional_stiffness = ((width)*f)/((sqrt((thetal)^2))+(sqrt((thetar)^2)));
+torsional_rigidity = torsional_stiffness/1000;
+
+disp(['Torisonal Rigidity is: ',num2str(torsional_rigidity),'kN/degree'])
+
+if (torsional_rigidity) < 20
+    disp('Torsional Rigidity Error')
+    
+end
+
+%% Mass
+
+%Uses length as found above to calculate volume from area and subsequently
+%mass from density of material
+chassis_volume = A*length;
+chassis_mass = (chassis_volume)*(al_ro);
+disp(['Chassis Mass is: ',num2str(chassis_mass),'kg'])
+
+%% Forces
+
+%Need to create a global displacement vector, U
+%Need to add back in points taken out from boundary conditions
+%K matrix before boundary condition reduction is Kbefore
+U = zeros(6*NoN,1);
+
+U(1) = 0;
+U(2) = 0;
+U(3) = 0;
+
+for i = 4:1:20
+    U(i) = u(i-3);
+end
+
+U(21) = 0;
+
+for i = 22:1:36
+    U(i) = u(i-4);
+end
+
+U(37) = 0;
+U(38) = 0;
+U(39) = 0;
+
+for i = 40:1:(6*NoN)
+    U(i) = u(i-7);
+end
+
+%% Space Frame Element Forces
+%Need element nodal displacement vector
+%y = SpaceFrameElementForces(E,G,A,Iy,Iz,J,x1,y1,z1,x2,y2,z2,u)
+
+% Need nodal displacement vector for each element
+global_F = zeros(12,(NoE));
+displacements = zeros(12,NoE);
+
+%Create u vector (12x1) for each elements as required in loop for each
+%element
+for i = 1:1:(NoE)
+    for j = 1:1:NoN
+        if j == element_nodes(((2*i)-1),1)
+            for k = 1:1:NoN
+                if k == element_nodes((2*i),1)
+                    displacement = [U((6*j)-5)
+                    U((6*j)-4)
+                    U((6*j)-3)
+                    U((6*j)-2)
+                    U((6*j)-1)
+                    U(6*j)
+                    U((6*k)-5)
+                    U((6*k)-4)
+                    U((6*k)-3)
+                    U((6*k)-2)
+                    U((6*k)-1)
+                    U(6*k)];
+            
+                    element_forces = SpaceFrameElementForces(E,G,A,Iy,Iz,J,(element_nodes((2*j-1),2)),(element_nodes((2*j-1),3)),(element_nodes((2*j-1),4)),(element_nodes((2*k),2)),(element_nodes((2*k),3)),(element_nodes((2*k),4)),displacement);
+                    displacements(:,i) = displacement;
+                    for l = 1:1:12
+                        global_F(l,i) = element_forces(l);
+                    end
+                end   
+            end
+        end  
+    end
+end             
+
+%% Stresses
+
+%Have force vector in form
+%Fx1,ShearY1,ShearZ1,Torsion1,My1,Mz1,Fx2,ShearY2,ShearZ2,Torsion2,My2,Mz2 in global_F
+
+%Need to calculate 2 3x3 stress tensor
+sigma_x = zeros(NoE,2);
+sigma_y = zeros(NoE,2);
+sigma_z = zeros(NoE,2);
+tau_xy = zeros(NoE,2);
+tau_yz = zeros(NoE,2);
+tau_xz = zeros(NoE,2);
+
+von_mises = zeros(NoE,2);
+sum_stresses = zeros(NoE,2);
+
+tau_constant = ((ro^2)+ro*ri+(ri^2))/((ro^2)+(ri^2));
+
+for i = 1:1:NoE
+    sigma_x(i,1) = ((global_F(1,i))/A) + ((global_F(5,i)*D)/(2*Iy)) + ((global_F(6,i)*D)/(2*Iz));
+    sigma_x(i,2) = ((global_F(7,i))/A) + ((global_F(11,i)*D)/(2*Iy)) + ((global_F(12,i)*D)/(2*Iz));
+    
+    sigma_y(i,1) = 0;   
+    sigma_y(i,2) = 0;   
+    
+    sigma_z(i,1) = 0;   
+    sigma_z(i,2) = 0;   
+    
+    tau_yz(i,1) = ((global_F(4,i))*D)/(4*Iy);   
+    tau_yz(i,2) = ((global_F(10,i))*D)/(4*Iy);
+    
+    tau_xz(i,1) = (((global_F(5,i))*4)/(3*A))*(tau_constant);
+    tau_xz(i,2) = (((global_F(11,i))*4)/(3*A))*(tau_constant);
+    
+    tau_xy(i,1) = (((global_F(6,i))*4)/(3*A))*(tau_constant);
+    tau_xy(i,2) = (((global_F(12,i))*4)/(3*A))*(tau_constant);
+    
+    von_mises(i,1) = sqrt(0.5*((((sigma_x(i,1))-(sigma_y(i,1)))^2)+(((sigma_y(i,1))-(sigma_z(i,1)))^2)+(((sigma_z(i,1))-(sigma_x(i,1)))^2)+6*(((tau_xy(i,1))^2)+((tau_yz(i,1))^2)+((tau_xz(i,1))^2))));
+    von_mises(i,2) = sqrt(0.5*((((sigma_x(i,2))-(sigma_y(i,2)))^2)+(((sigma_y(i,2))-(sigma_z(i,2)))^2)+(((sigma_z(i,2))-(sigma_x(i,2)))^2)+6*(((tau_xy(i,2))^2)+((tau_yz(i,2))^2)+((tau_xz(i,2))^2))));
+end
+
+% Working out max Von Mises Stress and where it is
+max_stress1 = max(von_mises(:,1));
+max_stress2 = max(von_mises(:,2));
+
+for i = 1:1:NoE
+    if von_mises(i,1) == max_stress1
+        a = i;
+    end
+end
+
+for j = 1:1:NoE
+    if  von_mises(j,2) == max_stress2
+        b = j;
+    end
+end
+
+max_stress = [max_stress1 max_stress2];
+
+if max_stress1 > max_stress2
+    max_stress_element = a;
+else
+    max_stress_element = b;
+end
+
+max_stress = max(max_stress);
+max_stress = max_stress/(10^6);
+max_stress_nodes = nodes(:,(max_stress_element));
+disp(['The Max Von Mises Stress is in Element ',num2str(max_stress_element),' and is: ',num2str(max_stress),' MPa, between Nodes: ',num2str(max_stress_nodes(1)),' and ',num2str(max_stress_nodes(2)),'.'])
+
+%Determination of whether chassis yields
+if max_stress > yield_strength
+    disp(['Yielding Occurs (Greater than ',num2str(yield_strength),'MPa)'])
+end
+
+% %of yield strength
+yield_percentage = ((max_stress)/(yield_strength))*100;
+disp(['Yield Percentage is ',num2str(yield_percentage),'% for a force of ',num2str(f),'N.'])
+
+% Max force it can take
+max_force = (f)/(yield_percentage/100);
+disp(['Max Force chassis can take is without yielding is: ',num2str(max_force),'N'])
+
+%% Figures
+
+prompt = 'Would you like to see figures? [y/n] ';
+str = input(prompt,'s');
+if str == 'y'
+    
+    figure(1)
+    x = element_nodes(:,2);
+    y = element_nodes(:,3);
+    z = element_nodes(:,4);
+
+    for i = 1:2:((2*NoE)-1)
+        plot3(x(i:(i+1)),y(i:(i+1)),z(i:(i+1)),'b')
+        axis equal
+        hold on
+    end
+    %Label Node Numbers
+    for i = 1:1:NoN
+         text((coords(i,1)),(coords(i,2)),(coords(i,3)),num2str(i),'FontSize',12.5)
+    end
+    %Label Element Numbers
+    for i = 1:1:NoE
+        text((midpoints(i,1)),(midpoints(i,2)),(midpoints(i,3)),num2str(i),'Color','Red','FontSize',10)
+    end
+    
+    %Displaced Model Figure
+    figure(2)
+    x = element_nodes(:,2);
+    y = element_nodes(:,3);
+    z = element_nodes(:,4);
+
+    for i = 1:2:((2*NoE)-1)
+        plot3(x(i:(i+1)),y(i:(i+1)),z(i:(i+1)),'b')
+        axis equal
+        hold on
+    end
+
+    U_dis = zeros(NoN,6);
+
+    for i = 1:1:NoN
+        U_dis(i,1) = U((6*i)-5);
+        U_dis(i,2) = U((6*i)-4);
+        U_dis(i,3) = U((6*i)-3);
+        U_dis(i,4) = U((6*i)-2);
+        U_dis(i,5) = U((6*i)-1);
+        U_dis(i,6) = U(6*i);
+    end
+
+    coords_dis = zeros(NoN,3);
+
+    %Need to add x,y,z displacements to coords array to get full displaced
+    %coordinates array
+
+    for i = 1:1:NoN
+        coords_dis(i,1) = U_dis(i,1)+coords(i,1);
+        coords_dis(i,2) = U_dis(i,2)+coords(i,2);
+        coords_dis(i,3) = U_dis(i,3)+coords(i,3);
+    end
+
+
+    %Like orignal script, put corresponding x,y,z coords where node numbers are
+
+    element_nodes_dis = zeros((NoE*2),4);
+    element_nodes_dis(:,1) = nodes(:);
+
+    for i = 1:1:(NoE*2)
+        for j = 1:1:NoN
+            if element_nodes_dis(i,1) == j
+                element_nodes_dis(i,2) = coords_dis(j,1);
+                element_nodes_dis(i,3) = coords_dis(j,2);
+                element_nodes_dis(i,4) = coords_dis(j,3);
+            end
+        end
+    end
+
+    %Plot displaced model
+
+    u = element_nodes_dis(:,2);
+    v = element_nodes_dis(:,3);
+    w = element_nodes_dis(:,4);
+
+    for i = 1:2:((2*NoE)-1)
+        plot3(u(i:(i+1)),v(i:(i+1)),w(i:(i+1)),'g')
+        hold on
+    end
+    view(-180,0)
+    
+
+    %Element Stresses Diagram
+    figure(3)
+    x = [1:NoE]';
+    plot(x,von_mises)
+    xlabel('Element Number')
+    ylabel('Von Mises Stress (Pa)')
+    title('Von Mises Stress Variation')
+    grid on
+    
+    %Axial Forces Diagram
+    figure(4)
+    for i = 1:1:NoE
+        f = global_F(:,i);
+        L = lengths(i);
+        SpaceFrameElementAxialDiagram(f,L);
+        hold on
+    end
+    
+    %Moment Y Diagram
+    figure(5)
+    for i = 1:1:NoE
+        f = global_F(:,i);
+        L = lengths(i);
+        SpaceFrameElementMomentYDiagram(f,L);
+        hold on
+    end
+    
+    %Moment Z Diagram
+    figure(6)
+    for i = 1:1:NoE
+        f = global_F(:,i);
+        L = lengths(i);
+        SpaceFrameElementMomentZDiagram(f,L);
+        hold on
+    end
+    
+    %Shear Y Diagram
+    figure(7)
+    for i = 1:1:NoE
+        f = global_F(:,i);
+        L = lengths(i);
+        SpaceFrameElementShearYDiagram(f,L);
+        hold on
+    end
+    
+    %Shear Z Diagram
+    figure(8)
+    for i = 1:1:NoE
+        f = global_F(:,i);
+        L = lengths(i);
+        SpaceFrameElementShearZDiagram(f,L);
+        hold on
+    end
+    
+    %Torsion Diagram
+    figure(9)
+    for i = 1:1:NoE
+        f = global_F(:,i);
+        L = lengths(i);
+        SpaceFrameElementTorsionDiagram(f,L);
+        hold on
+    end
+    
+    %Comparison Plot
+    figure(10)
+
+    iteration_number = [1,2,3,4,5,6,7,8];
+    stiffnesses = [0.024278,0.063627,0.11988,0.18997,0.88587,20.0042,20.0755,20.0594];
+    masses = [21.5480,51.8654,83.9459,114.7863,150.6842,168.7774,214.1882,218.0051];
+    max_stresses = [3048.3136,20882.8368,11879.984,10636.6204,2182.0612,55.7164,69.6305,58.426];
+    eh = [20,20,20,20,20,20,20,20];
+    ehh = [50,50,50,50,50,50,50,50];
+    ehhh = [880,880,880,880,880,880,880,880];
+
+    subplot(3,1,1)
+    plot((iteration_number),(stiffnesses),'-+')
+    hold on
+    xlabel('Iteration Number')
+    plot((iteration_number),eh,'--')
+    ylabel('Torsional Stiffness (kN/degree)')
+    title('Comparison of Torsional Stiffness')
+    
+    subplot(3,1,2)
+    hold on
+    plot((iteration_number),masses,'-+')
+    plot((iteration_number),ehh,'--')
+    ylabel('Mass (kg)')
+    xlabel('Iteration Number')
+    title('Comparison of Mass')
+
+
+    subplot(3,1,3)
+    plot((iteration_number),(max_stresses),'-+')
+    hold on
+    plot((iteration_number),(ehhh),'--')
+    xlabel('Iteration Number')
+    ylabel('Max Von Mises Stress (Mpa)')
+    title('Comparison of Stress')
+
+end
